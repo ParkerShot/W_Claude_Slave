@@ -3,6 +3,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
+const https = require('https');
 const { spawn } = require('child_process');
 
 const VISUAL_EXTS = ['.webm', '.mp4', '.gif', '.png', '.jpg', '.jpeg'];
@@ -97,13 +98,28 @@ class SlaveViewProvider {
   constructor(context) {
     this.context = context;
     this.view = null;
-    this.working = false;
+    // активные сессии Claude Code: id → когда начали. «Работает», пока карта не пуста.
+    // Хуки глобальные, поэтому Stop от чужой сессии не должен гасить нашу.
+    this.sessions = new Map();
     this.lastActivity = Date.now();
     this.annoyIndex = 0;
     this.phrases = loadPhrases();
     this.soundmap = loadSoundmap();
     this.soundPlaying = false;
     this.pending = []; // события, ждущие, пока договорит текущая фраза
+  }
+
+  get working() {
+    return this.sessions.size > 0;
+  }
+
+  // начало самой ранней активной сессии — для счётчика времени в панели
+  get workingSince() {
+    let min = 0;
+    for (const started of this.sessions.values()) {
+      if (!min || started < min) min = started;
+    }
+    return min;
   }
 
   get muted() {
@@ -135,7 +151,7 @@ class SlaveViewProvider {
       else if (msg.type === 'poke') this.poke();
       else if (msg.type === 'reset') {
         log('ручной сброс (двойной клик)');
-        this.working = false;
+        this.sessions.clear();
         this.pending = [];
         this.postState();
       }
@@ -163,12 +179,19 @@ class SlaveViewProvider {
       muted: this.muted,
       subtitles: this.subtitlesOn,
       reactionMs: this.reactionMs,
-      working: this.working
+      working: this.working,
+      workingSince: this.workingSince
     });
   }
 
   postState() {
-    if (this.view) this.view.webview.postMessage({ type: 'state', working: this.working });
+    if (this.view) {
+      this.view.webview.postMessage({
+        type: 'state',
+        working: this.working,
+        workingSince: this.workingSince
+      });
+    }
   }
 
   playEvent(kind, opts = {}) {
@@ -221,7 +244,8 @@ class SlaveViewProvider {
         src: this.toUri(visual),
         isVideo: ['.webm', '.mp4'].includes(ext),
         subtitle: this.subtitlesOn ? (phrase || '') : '',
-        working: this.working
+        working: this.working,
+        workingSince: this.workingSince
       });
     }
   }
@@ -230,23 +254,22 @@ class SlaveViewProvider {
     this.playEvent('annoyed', { sequential: true });
   }
 
-  handleClaudeEvent(ev) {
+  handleClaudeEvent(ev, session) {
+    const sid = session || 'default';
     if (ev === 'prompt') {
-      this.working = true;
-      this.workingSince = Date.now();
+      this.sessions.set(sid, Date.now());
       this.playEvent('command');
       this.postState();
     } else if (ev === 'stop') {
-      // «Работа закончена» — только если раб реально был занят.
-      // Шальной stop в простое (напр. от другой сессии) молчит.
-      const wasWorking = this.working;
-      this.working = false;
+      // закрываем только ТУ сессию, что закончила: параллельные задачи
+      // в других окнах продолжают держать «работает».
+      const wasWorking = this.sessions.delete(sid);
       if (wasWorking) this.playEvent('done');
       this.postState();
     } else if (ev === 'end') {
-      // сессия закрыта/сброшена: тихо снимаем «работает», без фразы
-      this.working = false;
-      this.pending = [];
+      // сессия закрыта/сброшена: тихо убираем её, без фразы
+      this.sessions.delete(sid);
+      if (!this.working) this.pending = [];
       this.postState();
     } else if (ev === 'notify') {
       // запрос прав / ожидание ввода — середина задачи: молча привлекаем внимание, без звука
@@ -258,10 +281,19 @@ class SlaveViewProvider {
   checkStuckWorking() {
     if (!this.working) return;
     const cfg = vscode.workspace.getConfiguration('wClaudeSlave');
-    const mins = Math.max(1, Number(cfg.get('workingTimeoutMinutes')) || 20);
-    if (Date.now() - (this.workingSince || 0) > mins * 60 * 1000) {
-      log('working ' + mins + ' мин без Stop — сбрасываю в покой');
-      this.working = false;
+    const mins = Math.max(1, Number(cfg.get('workingTimeoutMinutes')) || 120);
+    const limit = mins * 60 * 1000;
+    const now = Date.now();
+    let dropped = 0;
+    // сбрасываем только те сессии, что молчат дольше лимита, — живые не трогаем
+    for (const [sid, started] of this.sessions) {
+      if (now - started > limit) {
+        this.sessions.delete(sid);
+        dropped++;
+      }
+    }
+    if (dropped) {
+      log('сброшено зависших сессий: ' + dropped + ' (лимит ' + mins + ' мин)');
       this.postState();
     }
   }
@@ -287,6 +319,62 @@ function ensureEventsFile() {
   return file;
 }
 
+// Проверка обновлений: раз в сутки спрашиваем GitHub про последний релиз и,
+// если он новее, показываем уведомление со ссылкой. Ничего не скачивает и не
+// ставит само — решение всегда за пользователем. Отключается настройкой.
+function checkForUpdate(context) {
+  const cfg = vscode.workspace.getConfiguration('wClaudeSlave');
+  if (!cfg.get('checkUpdates')) return;
+
+  const DAY = 24 * 60 * 60 * 1000;
+  const last = context.globalState.get('lastUpdateCheck') || 0;
+  if (Date.now() - last < DAY) return;
+  context.globalState.update('lastUpdateCheck', Date.now());
+
+  const current = require('./package.json').version;
+  const req = https.get({
+    hostname: 'api.github.com',
+    path: '/repos/ParkerShot/W_Claude_Slave/releases/latest',
+    headers: { 'User-Agent': 'w-claude-slave', 'Accept': 'application/vnd.github+json' },
+    timeout: 8000
+  }, res => {
+    let body = '';
+    res.on('data', d => { body += d; });
+    res.on('end', () => {
+      try {
+        const latest = String(JSON.parse(body).tag_name || '').replace(/^v/, '');
+        if (!latest) return;
+        log('проверка обновлений: установлено ' + current + ', на GitHub ' + latest);
+        if (isNewer(latest, current)) {
+          vscode.window.showInformationMessage(
+            'W_Claude_Slave: доступна версия ' + latest + ' (у тебя ' + current + ')',
+            'Открыть релиз'
+          ).then(pick => {
+            if (pick) {
+              vscode.env.openExternal(vscode.Uri.parse(
+                'https://github.com/ParkerShot/W_Claude_Slave/releases/latest'
+              ));
+            }
+          });
+        }
+      } catch (e) { log('проверка обновлений: не разобрать ответ'); }
+    });
+  });
+  req.on('timeout', () => req.destroy());
+  req.on('error', e => log('проверка обновлений: ' + e.message));
+}
+
+// сравнение версий вида 1.2.3
+function isNewer(a, b) {
+  const pa = String(a).split('.').map(Number);
+  const pb = String(b).split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    const x = pa[i] || 0, y = pb[i] || 0;
+    if (x !== y) return x > y;
+  }
+  return false;
+}
+
 function activate(context) {
   logChannel = vscode.window.createOutputChannel('W_Claude_Slave');
   context.subscriptions.push(logChannel);
@@ -298,6 +386,8 @@ function activate(context) {
     const primer = path.join(slaveHome(), 'assets', 'primer.wav');
     if (fs.existsSync(primer)) { log('audio prime'); playWav(primer); }
   } catch (e) { /* ignore */ }
+
+  try { checkForUpdate(context); } catch (e) { /* обновления не критичны */ }
 
   const provider = new SlaveViewProvider(context);
   context.subscriptions.push(
@@ -323,7 +413,7 @@ function activate(context) {
         if (!t) continue;
         try {
           const ev = JSON.parse(t);
-          provider.handleClaudeEvent(ev.event);
+          provider.handleClaudeEvent(ev.event, ev.session);
         } catch (e) { /* мусорная строка — пропускаем */ }
       }
     });
@@ -425,15 +515,13 @@ function getHtml(webview) {
     color: var(--vscode-descriptionForeground, #999);
     height: 1.4em;
   }
-  #status .dots::after {
-    content: '';
-    animation: dots 1.5s steps(4, end) infinite;
+  /* текст статуса рисует JS (тикающий счётчик) — здесь только лёгкое дыхание */
+  #status.on {
+    animation: breathe 2s ease-in-out infinite;
   }
-  @keyframes dots {
-    0% { content: ''; }
-    25% { content: '.'; }
-    50% { content: '..'; }
-    75% { content: '...'; }
+  @keyframes breathe {
+    0%, 100% { opacity: .65; }
+    50% { opacity: 1; }
   }
   #controls {
     position: absolute; top: 6px; right: 6px; z-index: 5;
@@ -480,7 +568,7 @@ function getHtml(webview) {
   const subsBtn = document.getElementById('subs');
   const emptyEl = document.getElementById('empty');
 
-  let state = { portrait: null, muted: false, subtitles: true, reactionMs: 6000, working: false };
+  let state = { portrait: null, muted: false, subtitles: true, reactionMs: 6000, working: false, workingSince: 0 };
   let subtitleTimer = null;
   let returnTimer = null;
 
@@ -496,9 +584,31 @@ function getHtml(webview) {
     el.classList.add('visible');
   }
 
+  // живой индикатор: пока работает — тикающий счётчик времени, чтобы было
+  // видно, что процесс жив, даже если он длится десятки минут
+  let tickTimer = null;
+
+  function renderStatus() {
+    if (!state.working) { statusEl.textContent = ''; return; }
+    const ms = state.workingSince ? Date.now() - state.workingSince : 0;
+    const sec = Math.max(0, Math.floor(ms / 1000));
+    const t = sec < 60
+      ? sec + 'с'
+      : Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
+    const dots = '.'.repeat(1 + (Math.floor(Date.now() / 600) % 3));
+    statusEl.textContent = '⚒ работает ' + t + dots;
+  }
+
   function updateStatus() {
     frameEl.classList.toggle('working', state.working);
-    statusEl.innerHTML = state.working ? '⚒ работает<span class="dots"></span>' : '';
+    statusEl.classList.toggle('on', state.working);
+    renderStatus();
+    if (state.working && !tickTimer) {
+      tickTimer = setInterval(renderStatus, 500);
+    } else if (!state.working && tickTimer) {
+      clearInterval(tickTimer);
+      tickTimer = null;
+    }
   }
 
   // перезапуск GIF: добавляем метку времени, чтобы <img> точно перегрузил кадр 0
@@ -569,11 +679,13 @@ function getHtml(webview) {
       state.subtitles = msg.subtitles !== false;
       if (msg.reactionMs) state.reactionMs = msg.reactionMs;
       state.working = msg.working;
+      state.workingSince = msg.workingSince || 0;
       syncButtons();
       emptyEl.style.display = msg.portrait ? 'none' : 'block';
       showStatic();
     } else if (msg.type === 'play') {
       state.working = msg.working;
+      state.workingSince = msg.workingSince || 0;
       if (msg.reactionMs) state.reactionMs = msg.reactionMs;
       setSubtitle(msg.subtitle);
       if (msg.src) playAnimation(msg.src);
@@ -583,6 +695,7 @@ function getHtml(webview) {
       // смена статуса «работает» — только покачивание и подпись,
       // говорящую анимацию не трогаем (ей заведует play/quiet)
       state.working = msg.working;
+      state.workingSince = msg.workingSince || 0;
       updateStatus();
     } else if (msg.type === 'quiet') {
       // фраза договорена — прекратить говорящую анимацию, вернуть портрет

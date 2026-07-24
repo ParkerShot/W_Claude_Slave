@@ -13,7 +13,7 @@
 $ErrorActionPreference = 'Stop'
 $src   = $PSScriptRoot
 $home_ = $env:USERPROFILE
-$extId = 'ParkerShot.w-claude-slave-0.1.0'
+$extId = 'ParkerShot.w-claude-slave-0.2.0'
 $extDir = Join-Path $home_ ".vscode\extensions\$extId"
 $slave  = Join-Path $home_ ".claude\w-claude-slave"
 $settings = Join-Path $home_ ".claude\settings.json"
@@ -41,7 +41,9 @@ if (-not (Test-Path $events)) { New-Item -ItemType File -Path $events | Out-Null
 $cmd = @(
   '@echo off',
   'if /I "%CLAUDE_CODE_ENTRYPOINT%"=="claude-desktop" exit /b 0',
-  'echo {"event":"%~1"}>>"%~dp0events.jsonl"'
+  'set "SID=%CLAUDE_CODE_SESSION_ID%"',
+  'if "%SID%"=="" set "SID=default"',
+  'echo {"event":"%~1","session":"%SID%"}>>"%~dp0events.jsonl"'
 ) -join "`r`n"
 Set-Content -Path (Join-Path $slave 'slave-event.cmd') -Value $cmd -Encoding ASCII
 # if an assets\ folder sits next to setup.ps1, copy it into the slave home

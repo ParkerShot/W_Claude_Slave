@@ -2,7 +2,7 @@
 
 [RU](#w_claude_slave--раб-для-claude-code) · [EN](#w_claude_slave--a-grunt-for-claude-code)
 
-`v0.1.0`
+`v0.2.0`
 
 ---
 
@@ -64,13 +64,15 @@ powershell -ExecutionPolicy Bypass -File setup.ps1
 
 `setup.ps1` просто автоматизирует эти же 4 шага. `<ПРОФИЛЬ>` = твой профиль, напр. `C:\Users\Ivan`.
 
-1. **Расширение.** `Extensions` → «…» → `Install from VSIX…` → `w-claude-slave-0.1.0.vsix`.
+1. **Расширение.** `Extensions` → «…» → `Install from VSIX…` → `w-claude-slave-0.2.0.vsix`.
 2. **Ассеты.** Создай `<ПРОФИЛЬ>\.claude\w-claude-slave\assets\` с папками `command`, `done`, `permission`, `annoyed`, `idle`, разложи свои `.wav`/`.gif`/`.png`.
 3. **Писалка событий.** Файл `<ПРОФИЛЬ>\.claude\w-claude-slave\slave-event.cmd`:
    ```bat
    @echo off
    if /I "%CLAUDE_CODE_ENTRYPOINT%"=="claude-desktop" exit /b 0
-   echo {"event":"%~1"}>>"%~dp0events.jsonl"
+   set "SID=%CLAUDE_CODE_SESSION_ID%"
+   if "%SID%"=="" set "SID=default"
+   echo {"event":"%~1","session":"%SID%"}>>"%~dp0events.jsonl"
    ```
 4. **Хуки.** В `<ПРОФИЛЬ>\.claude\settings.json` добавь в объект `"hooks"`:
    ```json
@@ -124,11 +126,18 @@ powershell -ExecutionPolicy Bypass -File setup.ps1
 | `wClaudeSlave.muted` | `false` | выключить звук |
 | `wClaudeSlave.subtitles` | `true` | показывать облачко |
 | `wClaudeSlave.reactionSeconds` | `6` | макс. длина говорящей анимации |
-| `wClaudeSlave.workingTimeoutMinutes` | `20` | сброс «работает», если `Stop` не пришёл |
+| `wClaudeSlave.workingTimeoutMinutes` | `120` | аварийный сброс «работает», если `Stop` не пришёл |
+| `wClaudeSlave.checkUpdates` | `true` | раз в сутки проверять новую версию на GitHub |
 | `wClaudeSlave.idleGrumble` | `false` | изредка бурчать в простое |
 | `wClaudeSlave.slaveHome` | `""` | своя папка вместо `~/.claude/w-claude-slave` |
 
 Двойной клик по рабу — мгновенный сброс состояния «работает».
+
+Пока задача идёт, под портретом тикает счётчик (`⚒ работает 4:12…`) — видно, что процесс жив. Состояние привязано к сессии Claude Code: параллельные окна не гасят надпись друг другу, а длинные задачи не обрываются по таймауту.
+
+### Обновления
+
+Расширение раз в сутки проверяет [Releases](../../releases) и показывает уведомление, если вышла новая версия — скачивание и установка остаются за тобой. Отключается настройкой `wClaudeSlave.checkUpdates`.
 
 ### Диагностика
 
@@ -198,13 +207,15 @@ Alternative — install the `.vsix` from [Releases](../../releases) manually (`E
 
 `setup.ps1` just automates these same 4 steps. `<PROFILE>` = your user profile, e.g. `C:\Users\Ivan`.
 
-1. **Extension.** `Extensions` → "…" → `Install from VSIX…` → `w-claude-slave-0.1.0.vsix`.
+1. **Extension.** `Extensions` → "…" → `Install from VSIX…` → `w-claude-slave-0.2.0.vsix`.
 2. **Assets.** Create `<PROFILE>\.claude\w-claude-slave\assets\` with subfolders `command`, `done`, `permission`, `annoyed`, `idle`; drop your own `.wav`/`.gif`/`.png`.
 3. **Event writer.** File `<PROFILE>\.claude\w-claude-slave\slave-event.cmd`:
    ```bat
    @echo off
    if /I "%CLAUDE_CODE_ENTRYPOINT%"=="claude-desktop" exit /b 0
-   echo {"event":"%~1"}>>"%~dp0events.jsonl"
+   set "SID=%CLAUDE_CODE_SESSION_ID%"
+   if "%SID%"=="" set "SID=default"
+   echo {"event":"%~1","session":"%SID%"}>>"%~dp0events.jsonl"
    ```
 4. **Hooks.** In `<PROFILE>\.claude\settings.json` add to the `"hooks"` object:
    ```json
@@ -258,11 +269,18 @@ After adding files — `Developer: Reload Window`.
 | `wClaudeSlave.muted` | `false` | mute sound |
 | `wClaudeSlave.subtitles` | `true` | show the speech bubble |
 | `wClaudeSlave.reactionSeconds` | `6` | max length of the talking animation |
-| `wClaudeSlave.workingTimeoutMinutes` | `20` | resets "working" if `Stop` never arrives |
+| `wClaudeSlave.workingTimeoutMinutes` | `120` | emergency reset of "working" if `Stop` never arrives |
+| `wClaudeSlave.checkUpdates` | `true` | check GitHub for a new version once a day |
 | `wClaudeSlave.idleGrumble` | `false` | occasionally grumble while idle |
 | `wClaudeSlave.slaveHome` | `""` | custom folder instead of `~/.claude/w-claude-slave` |
 
 Double-click the slave to instantly reset the "working" state.
+
+While a task runs, a live counter ticks under the portrait (`⚒ working 4:12…`) so you can see the process is alive. State is tracked per Claude Code session: parallel windows don't cancel each other's status, and long tasks aren't cut off by a timeout.
+
+### Updates
+
+Once a day the extension checks [Releases](../../releases) and shows a notification if a newer version is out — downloading and installing stays your call. Disable via `wClaudeSlave.checkUpdates`.
 
 ### Diagnostics
 

@@ -2,7 +2,7 @@
   "name": "w-claude-slave",
   "displayName": "W_Claude_Slave",
   "description": "A Warcraft grunt lives in VS Code and does Claude Code's dirty work — 'Work, work!' when you send a command, 'Job's done!' at the end, and mutters if you poke him. Zug zug.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "ParkerShot",
   "license": "MIT",
   "author": "WebB0rn (ParkerShot)",
@@ -64,13 +64,18 @@
         },
         "wClaudeSlave.workingTimeoutMinutes": {
           "type": "number",
-          "default": 20,
-          "description": "Через сколько минут без событий сбросить состояние «работает» (если Stop не пришёл)"
+          "default": 120,
+          "description": "Аварийный сброс «работает», если Stop так и не пришёл (сессию убили). Считается на сессию — длинные задачи не обрываются."
         },
         "wClaudeSlave.reactionSeconds": {
           "type": "number",
           "default": 6,
           "description": "Сколько секунд играть анимацию-реакцию, прежде чем вернуться к статичному портрету"
+        },
+        "wClaudeSlave.checkUpdates": {
+          "type": "boolean",
+          "default": true,
+          "description": "Раз в сутки проверять на GitHub, не вышла ли новая версия (только уведомление, ничего не скачивается автоматически)"
         },
         "wClaudeSlave.idleGrumble": {
           "type": "boolean",
