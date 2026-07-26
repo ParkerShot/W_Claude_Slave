@@ -40,7 +40,7 @@ VS Code extension (w-claude-slave) ──watches the file───────�
 
 **Самый простой путь (со звуком)**
 
-1. Скачай бандл: [w-claude-slave-full-bundle.zip (Google Drive)](https://drive.google.com/file/d/18Aq01QdY99UCpDgkmQ3KBLcgs0uVeUNl/view?usp=drive_link) — код + установщик + ассеты.
+1. Скачай бандл: [w-claude-slave-full-bundle.zip (Google Drive)](https://drive.google.com/drive/folders/1AaKK5NPL0_PAJ7yIE-bmGG1iAXoju_Gh?usp=drive_link) — код + установщик + ассеты.
 2. Распакуй, зайди в папку.
 3. `powershell -ExecutionPolicy Bypass -File setup.ps1`
 4. Перезапусти VS Code (`Developer: Reload Window`).
@@ -183,7 +183,7 @@ Requires Windows + VS Code + Claude Code.
 
 **Easiest path (with sound)**
 
-1. Download the bundle: [w-claude-slave-full-bundle.zip (Google Drive)](https://drive.google.com/file/d/18Aq01QdY99UCpDgkmQ3KBLcgs0uVeUNl/view?usp=drive_link) — code + installer + assets.
+1. Download the bundle: [w-claude-slave-full-bundle.zip (Google Drive)](https://drive.google.com/drive/folders/1AaKK5NPL0_PAJ7yIE-bmGG1iAXoju_Gh?usp=drive_link) — code + installer + assets.
 2. Unzip, `cd` into the folder.
 3. `powershell -ExecutionPolicy Bypass -File setup.ps1`
 4. Restart VS Code (`Developer: Reload Window`).
