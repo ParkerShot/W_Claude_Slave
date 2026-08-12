@@ -2,7 +2,7 @@
   "name": "w-claude-slave",
   "displayName": "W_Claude_Slave",
   "description": "A Warcraft grunt lives in VS Code and does Claude Code's dirty work — 'Work, work!' when you send a command, 'Job's done!' at the end, and mutters if you poke him. Zug zug.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "ParkerShot",
   "license": "MIT",
   "author": "WebB0rn (ParkerShot)",

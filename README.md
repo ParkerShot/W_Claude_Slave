@@ -2,7 +2,7 @@
 
 [RU](#w_claude_slave--раб-для-claude-code) · [EN](#w_claude_slave--a-grunt-for-claude-code)
 
-`v0.2.0`
+`v0.3.0`
 
 ---
 
@@ -64,7 +64,7 @@ powershell -ExecutionPolicy Bypass -File setup.ps1
 
 `setup.ps1` просто автоматизирует эти же 4 шага. `<ПРОФИЛЬ>` = твой профиль, напр. `C:\Users\Ivan`.
 
-1. **Расширение.** `Extensions` → «…» → `Install from VSIX…` → `w-claude-slave-0.2.0.vsix`.
+1. **Расширение.** `Extensions` → «…» → `Install from VSIX…` → `w-claude-slave-0.3.0.vsix`.
 2. **Ассеты.** Создай `<ПРОФИЛЬ>\.claude\w-claude-slave\assets\` с папками `command`, `done`, `permission`, `annoyed`, `idle`, разложи свои `.wav`/`.gif`/`.png`.
 3. **Писалка событий.** Файл `<ПРОФИЛЬ>\.claude\w-claude-slave\slave-event.cmd`:
    ```bat
@@ -72,7 +72,8 @@ powershell -ExecutionPolicy Bypass -File setup.ps1
    if /I "%CLAUDE_CODE_ENTRYPOINT%"=="claude-desktop" exit /b 0
    set "SID=%CLAUDE_CODE_SESSION_ID%"
    if "%SID%"=="" set "SID=default"
-   echo {"event":"%~1","session":"%SID%"}>>"%~dp0events.jsonl"
+   set "CWDESC=%CD:\=\\%"
+   echo {"event":"%~1","session":"%SID%","cwd":"%CWDESC%"}>>"%~dp0events.jsonl"
    ```
 4. **Хуки.** В `<ПРОФИЛЬ>\.claude\settings.json` добавь в объект `"hooks"`:
    ```json
@@ -141,7 +142,7 @@ powershell -ExecutionPolicy Bypass -File setup.ps1
 
 ### Диагностика
 
-Хуки Claude Code глобальные — раб реагирует на все сессии Claude Code в VS Code. Панель **OUTPUT → канал «W_Claude_Slave»** показывает каждое событие и запуск плеера.
+Хуки Claude Code глобальные, но каждое окно VS Code слышит только свой проект: событие несёт рабочую папку сессии, и окно реагирует, только если она совпадает с открытым в нём проектом (или лежит внутри него). Открыл два окна на разных проектах — команда в одном не будит орка в другом. Панель **OUTPUT → канал «W_Claude_Slave»** показывает каждое событие и запуск плеера, включая пропущенные чужие.
 
 ### Лицензия
 
@@ -207,7 +208,7 @@ Alternative — install the `.vsix` from [Releases](../../releases) manually (`E
 
 `setup.ps1` just automates these same 4 steps. `<PROFILE>` = your user profile, e.g. `C:\Users\Ivan`.
 
-1. **Extension.** `Extensions` → "…" → `Install from VSIX…` → `w-claude-slave-0.2.0.vsix`.
+1. **Extension.** `Extensions` → "…" → `Install from VSIX…` → `w-claude-slave-0.3.0.vsix`.
 2. **Assets.** Create `<PROFILE>\.claude\w-claude-slave\assets\` with subfolders `command`, `done`, `permission`, `annoyed`, `idle`; drop your own `.wav`/`.gif`/`.png`.
 3. **Event writer.** File `<PROFILE>\.claude\w-claude-slave\slave-event.cmd`:
    ```bat
@@ -215,7 +216,8 @@ Alternative — install the `.vsix` from [Releases](../../releases) manually (`E
    if /I "%CLAUDE_CODE_ENTRYPOINT%"=="claude-desktop" exit /b 0
    set "SID=%CLAUDE_CODE_SESSION_ID%"
    if "%SID%"=="" set "SID=default"
-   echo {"event":"%~1","session":"%SID%"}>>"%~dp0events.jsonl"
+   set "CWDESC=%CD:\=\\%"
+   echo {"event":"%~1","session":"%SID%","cwd":"%CWDESC%"}>>"%~dp0events.jsonl"
    ```
 4. **Hooks.** In `<PROFILE>\.claude\settings.json` add to the `"hooks"` object:
    ```json
@@ -284,7 +286,7 @@ Once a day the extension checks [Releases](../../releases) and shows a notificat
 
 ### Diagnostics
 
-Claude Code hooks are global — the slave reacts to every Claude Code session running in VS Code. The **OUTPUT panel → "W_Claude_Slave" channel** shows every event and player invocation.
+Claude Code hooks are global, but each VS Code window only hears its own project: every event carries the session's working directory, and a window reacts only if it matches (or sits inside) the project open in that window. Open two windows on different projects and a command in one won't wake the other's slave. The **OUTPUT panel → "W_Claude_Slave" channel** shows every event and player invocation, including ones skipped as belonging to another window.
 
 ### License
 

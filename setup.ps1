@@ -1,4 +1,4 @@
-<#
+﻿<#
   W_Claude_Slave - installer for Claude Code + VS Code (Windows).
 
   What it does (idempotent, safe to re-run):
@@ -13,7 +13,7 @@
 $ErrorActionPreference = 'Stop'
 $src   = $PSScriptRoot
 $home_ = $env:USERPROFILE
-$extId = 'ParkerShot.w-claude-slave-0.2.0'
+$extId = 'ParkerShot.w-claude-slave-0.3.0'
 $extDir = Join-Path $home_ ".vscode\extensions\$extId"
 $slave  = Join-Path $home_ ".claude\w-claude-slave"
 $settings = Join-Path $home_ ".claude\settings.json"
@@ -38,12 +38,17 @@ if (-not (Test-Path $events)) { New-Item -ItemType File -Path $events | Out-Null
 # event writer (called by hooks): appends {"event":"<arg>"} to events.jsonl,
 # but ONLY when Claude Code runs in VS Code. Skips the Claude desktop app so the
 # slave doesn't talk while you use Claude Code inside the desktop app.
+# Also stamps cwd so each VS Code WINDOW's extension only reacts to events
+# from ITS OWN open project, not every window sharing this global hook.
 $cmd = @(
   '@echo off',
+  'rem Only speak when Claude Code runs in VS Code, not the Claude desktop app.',
   'if /I "%CLAUDE_CODE_ENTRYPOINT%"=="claude-desktop" exit /b 0',
   'set "SID=%CLAUDE_CODE_SESSION_ID%"',
   'if "%SID%"=="" set "SID=default"',
-  'echo {"event":"%~1","session":"%SID%"}>>"%~dp0events.jsonl"'
+  'rem cwd so each VS Code WINDOW only reacts to its own project.',
+  'set "CWDESC=%CD:\=\\%"',
+  'echo {"event":"%~1","session":"%SID%","cwd":"%CWDESC%"}>>"%~dp0events.jsonl"'
 ) -join "`r`n"
 Set-Content -Path (Join-Path $slave 'slave-event.cmd') -Value $cmd -Encoding ASCII
 # if an assets\ folder sits next to setup.ps1, copy it into the slave home

@@ -49,6 +49,22 @@ function pickRandom(arr) {
   return arr.length ? arr[Math.floor(Math.random() * arr.length)] : null;
 }
 
+// Хуки Claude Code глобальные — их events.jsonl общий для всех окон VS Code.
+// Чтобы команда в одном окне не будила орка в другом, событие несёт cwd
+// (рабочую папку сессии), и мы играем звук только если она принадлежит
+// проекту, открытому В ЭТОМ окне.
+function belongsToThisWindow(eventCwd) {
+  if (!eventCwd) return true; // старый хук без cwd — не фильтруем, старое поведение
+  const folders = vscode.workspace.workspaceFolders;
+  if (!folders || !folders.length) return false; // в этом окне вообще нет открытого проекта
+  const norm = p => path.normalize(p).replace(/[\\/]+$/, '').toLowerCase();
+  const evNorm = norm(eventCwd);
+  return folders.some(f => {
+    const root = norm(f.uri.fsPath);
+    return evNorm === root || evNorm.startsWith(root + path.sep.toLowerCase());
+  });
+}
+
 function loadPhrases() {
   const file = path.join(slaveHome(), 'assets', 'phrases.json');
   try {
@@ -413,6 +429,10 @@ function activate(context) {
         if (!t) continue;
         try {
           const ev = JSON.parse(t);
+          if (!belongsToThisWindow(ev.cwd)) {
+            log('чужое окно, пропускаю: ' + ev.event + ' | ' + (ev.cwd || '(без cwd)'));
+            continue;
+          }
           provider.handleClaudeEvent(ev.event, ev.session);
         } catch (e) { /* мусорная строка — пропускаем */ }
       }
