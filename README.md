@@ -1,4 +1,4 @@
-# W_Claude_Slave
+# W3_VS_Slave
 
 [RU](#w_claude_slave--раб-для-claude-code) · [EN](#w_claude_slave--a-grunt-for-claude-code)
 
